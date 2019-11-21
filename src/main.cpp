@@ -3,9 +3,36 @@
 #include <utility>
 #include <set>
 
-int look_for_solutions(int n, int argc, char * argv[]) {
-    Matrix<int> m(n, n);
+std::string time_interval_to_string(const double & t) {
+    return
+        std::to_string((int)(t/3600)) + "h "
+        + std::to_string((int)(t/60) % 60) + "m "
+        + std::to_string((int)(t/60) % 60) + "s"
+    ;
+}
 
+bool check_matrix_is_triangular(const Matrix<int> & m) {
+    int n = std::min(m.size(0), m.size(1));
+    for (int i = 0; i < m.size(0); i++ ) {
+        for (int j = 0; j < std::min(n, i); j++) {
+            if (m(i,j) != 0) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+int look_for_solutions(int n, int argc, char * argv[]) {
+
+    time_t start_time, end_time, last_stats_update_time;
+    double time_taken = 0, estimated_time = 0, time_since_last_stats_update = 0;
+    const double stats_update_interval = 30;
+    time(&start_time);
+    time(&last_stats_update_time);
+
+    Matrix<int> m(n, n);
+    
     // set statics
     for (int i = 1; i < n; i++) {
         m(0, i) = 1;
@@ -13,18 +40,35 @@ int look_for_solutions(int n, int argc, char * argv[]) {
     }
 
     //set variable
-    int total_combinations = std::pow(2, (n-1) * (n-2));
-    for (int signs = 0; signs < total_combinations ; signs++) {
-        std::cerr << "\rMatrix " << signs + 1 << " out of " << total_combinations << std::flush;
+    long int total_combinations = std::pow(2, (n-1) * (n-2));
+    std::cerr << "Calculing kernels of " << total_combinations << " matrices." << std::endl;
+    for (long int signs = 0; signs < total_combinations ; signs++) {
 
-        int c = 1;
+        time(&end_time);
+        time_taken = double(end_time - start_time);
+        time_since_last_stats_update = double(end_time - last_stats_update_time);
+
+        if (time_since_last_stats_update >= stats_update_interval ) {
+
+            estimated_time = time_taken * double(total_combinations - signs) / double(signs);
+
+            std::cerr << "\rMatrix " << signs + 1 << " out of " << total_combinations << ".";
+            std::cerr.precision(4);
+            std::cerr << " ( " << std::fixed << 100 * double(signs) / double(total_combinations) << "% ).";
+            std::cerr << " Estimated time to finish: ";
+            std::cerr << " " << time_interval_to_string(estimated_time) << ".";
+            std::cerr << std::flush;
+            time(&last_stats_update_time);
+        }
+
+        long int c = 1;
         for (int i = 1; i < n; i++) {
             for (int j = 1; j < n; j++) {
                 if (i == j) {
                     m(i,j) = 0;
                 } else {
                     // get sign
-                    int sign = (signs % (2*c)) / c;
+                    long int sign = (signs % (2*c)) / c;
                     if (sign == 0) {
                         m(i, j) = -1;
                     } else {
@@ -36,6 +80,19 @@ int look_for_solutions(int n, int argc, char * argv[]) {
         }
 
         Matrix<int> k = m.kernel();
+        m.transpose();
+        std::pair<Matrix<int>, Matrix<int>> p = m.gauss_seidel();
+
+        if ( !check_matrix_is_triangular(p.first) ) {
+            std::cout << "Matrix" << std::endl;
+            std::cout << m << std::endl;
+            std::cout << "has Triangualation" << std::endl;
+            std::cout << p.first << std::endl;
+            std::cout << "has Transformation" << std::endl;
+            std::cout << p.second << std::endl;
+        }
+        m.transpose();
+
         if (k.size(1) > 0) {
             k.transpose();
 
@@ -69,7 +126,12 @@ int look_for_solutions(int n, int argc, char * argv[]) {
 
         
     }
+
+    time(&end_time);
+    time_taken = double(end_time - start_time);
+    std::cerr << "It took a total time of " << time_interval_to_string(time_taken) << ".";
     std::cerr << std::endl;
+
     return -1;
 }
 
