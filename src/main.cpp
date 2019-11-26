@@ -11,6 +11,56 @@ std::string time_interval_to_string(const double & t) {
     ;
 }
 
+int _gcd(int * coefs, int n) {
+    int min = 0, max = 0;
+    int index_min = -1;
+
+    // take the min (!= 0) and max
+    for (int i = 0; i < n; i++) {
+        if (coefs[i] != 0 ) {
+            if (index_min == -1 || min > coefs[i]) {
+                min = coefs[i];
+                index_min = i;
+            }
+
+            if (max < coefs[i]) {
+                max = coefs[i];
+            }
+        }
+    }
+
+    if (index_min < 0) {
+        return 0;
+    }
+
+    if (max == min) {
+        return max;
+    }
+
+    if (min == 1) {
+        return 1;
+    }
+
+    for (int i = 0; i < n; i++) {
+        if (i != index_min) {
+            coefs[i] = coefs[i] % min;
+        }
+    }
+
+    return _gcd(coefs, n);
+}
+
+int gcd(const int * coefs, int n) {
+    int * c = (int *) std::malloc(sizeof(int) * n);
+    // std::memcpy(c, coefs, n);
+    for (int i = 0; i < n; i++) {
+        c[i] = std::abs(coefs[i]);
+    }
+    int g = _gcd(c, n);
+    std::free(c);
+    return g;
+}
+
 bool check_matrix_is_triangular(const Matrix<int> & m) {
     int n = std::min(m.size(0), m.size(1));
     for (int i = 0; i < m.size(0); i++ ) {
@@ -21,6 +71,28 @@ bool check_matrix_is_triangular(const Matrix<int> & m) {
         }
     }
     return true;
+}
+
+void change_column_sign(Matrix<int>& m, int j) {
+    for (int i = 0; i < m.size(0); i++) {
+        m(i, j) *= -1;
+    }
+}
+
+bool check_coefs_are_non_zero_and_different(const Matrix<int> & m, int i) {
+
+    // check all components are different in abs value
+    std::set<int> components;
+    bool already_in = false;
+    for (int j = 0; j < m.size(1) && !already_in; j++) {
+        if (m(i, j) == 0) {
+            return false;
+        }
+        already_in = components.find(std::abs(m(i,j))) != components.end();
+        components.insert(abs(m(i, j)));
+    }
+
+    return !already_in;
 }
 
 int look_for_solutions(int n, int argc, char * argv[]) {
@@ -61,6 +133,7 @@ int look_for_solutions(int n, int argc, char * argv[]) {
             time(&last_stats_update_time);
         }
 
+        // Build all -1 / +1
         long int c = 1;
         for (int i = 1; i < n; i++) {
             for (int j = 1; j < n; j++) {
@@ -79,52 +152,91 @@ int look_for_solutions(int n, int argc, char * argv[]) {
             }
         }
 
+        // calculate kernel
         Matrix<int> k = m.kernel();
-        m.transpose();
-        std::pair<Matrix<int>, Matrix<int>> p = m.gauss_seidel();
 
-        if ( !check_matrix_is_triangular(p.first) ) {
-            std::cout << "Matrix" << std::endl;
-            std::cout << m << std::endl;
-            std::cout << "has Triangualation" << std::endl;
-            std::cout << p.first << std::endl;
-            std::cout << "has Transformation" << std::endl;
-            std::cout << p.second << std::endl;
-        }
-        m.transpose();
-
+        // check kernel
         if (k.size(1) > 0) {
             k.transpose();
 
-            if (k.size(0) > 1) {
-                std::cout << "This kernel has dimension " << k.size(0) << std::endl;
-                std::cout << "Matrix" << std::endl;
-                std::cout << m << std::endl;
-                std::cout << "has kernel" << std::endl;
-                std::cout << k << std::endl;
-                return 0;
-            }
-
             for (int i = 0; i < k.size(0); i++) {
-                // check all components are different in abs value
-                std::set<int> components;
-                bool already_in = false;
-                for (int j = 0; j < k.size(1) && !already_in; j++) {
-                    already_in = components.find(abs(k(i,j))) == components.end();
-                }
+                // NOTE: if k.size(0) > 1, we could be skiping possible results
+            
+                // Check kernel
+                if (check_coefs_are_non_zero_and_different(k, i)) {
 
-                if (!already_in) {
-                    std::cout << "Matrix" << std::endl;
-                    std::cout << m << std::endl;
-                    std::cout << "has kernel" << std::endl;
-                    std::cout << k << std::endl;
-                }
+                    // copy coefs
+                    int * coefs = (int *) std::malloc(sizeof(int) * n);
+                    std::memcpy(coefs, &(k(i,0)), sizeof(int) * n);
 
+                    // turn them positive (and adjust matrix consequently)
+                    for (int j = 0; j < n; j++) {
+                        if (coefs[j] < 0) {
+                            change_column_sign(m, j);
+                            coefs[j] *= -1;
+                        }
+                    }
+
+                    // divide by gcd (to get minimal solution)
+                    int g = gcd(coefs, n);
+                    for(int j = 0 ; j < n; j++) {
+                        coefs[j] /= g;
+                    }
+
+                    // get coefs total sum
+                    int s = 0;
+                    for (int j = 0 ; j < n ; j++) {
+                        s += coefs[j];
+                    }
+
+                    // print coefficients
+                    std::cout << std::endl;
+                    std::cout << "{ ";
+                    for(int j = 0 ; j < n; j++) {
+                        if (j > 0) {
+                            std::cout << ", ";
+                         }
+                         std::cout << coefs[j];
+                    }
+                    std::cout << " }" << std::endl;
+
+                    // print equations
+                    for (int l = 0; l < m.size(0); l++) {
+
+                        std::cout << (s - coefs[l])/2 << " = ";
+
+                        bool is_first = true;
+                        for (int j = 0; j < m.size(1); j++) {
+                            if (m(l,j) > 0) {
+                                if (!is_first) {
+                                    std::cout << " + ";
+                                }
+                                std::cout << coefs[j];
+                                is_first = false;
+                            }
+                        }
+
+                        is_first = true;
+                        std::cout << " = ";
+                        for (int j = 0; j < m.size(1); j++) {
+                            if (m(l,j) < 0) {
+                                if (!is_first) {
+                                    std::cout << " + ";
+                                }
+                                std::cout << coefs[j];
+                                is_first = false;
+                            }
+                        }
+                        std::cout << std::endl;
+                    }
+
+                    // free memory
+                    std::free(coefs);
+                }
             }
 
         }
 
-        
     }
 
     time(&end_time);
@@ -136,8 +248,7 @@ int look_for_solutions(int n, int argc, char * argv[]) {
 }
 
 int main (int argc, char * argv[]) {
-    
-    
+
     for (int n = 3; n < 9; n += 2) {
         std::cerr << "Testing for n = " << n << std::endl;
         int status = look_for_solutions(n, argc, argv);
@@ -146,23 +257,5 @@ int main (int argc, char * argv[]) {
         }
     }
 
-    /*
-    Matrix<int> m;
-    std::cin >> m;
-
-    std::cout << "Matrix" << std::endl;
-    std::cout << m << std::endl;
-    m.transpose();
-    std::pair<Matrix<int>, Matrix<int> > p = m.gauss_seidel();
-    m.transpose();
-    Matrix<int> k = m.kernel();
-    std::cout << "has Triangualation" << std::endl;
-    std::cout << p.first << std::endl;
-    std::cout << "has Transformation" << std::endl;
-    std::cout << p.second << std::endl;
-    std::cout << "has kernel" << std::endl;
-    std::cout << k << std::endl;
-    */
-
-    return 0;    
+    return 0;
 }
